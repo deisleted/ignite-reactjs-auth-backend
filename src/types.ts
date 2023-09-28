@@ -9,9 +9,17 @@ type UserData = {
   roles: string[];
 }
 
+
+export type CreateUserData = {
+  password: string;
+  email: string;
+  roles: string[];
+  name: string;
+}
+
 export type UsersStore = Map<string, UserData>
 
-export type RefreshTokensStore = Map<string, string[]>
+export type refreshToken = Map<string, string[]>
 
 export type DecodedToken = {
   sub: string;

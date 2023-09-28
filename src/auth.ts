@@ -3,13 +3,13 @@ import jwt from 'jsonwebtoken'
 import { auth } from './config';
 import { createRefreshToken } from './database';
 
-export function generateJwtAndRefreshToken(email: string, payload: object = {}) {
+export async function generateJwtAndRefreshToken(email: string, payload: object = {}) {
   const token = jwt.sign(payload, auth.secret, {
     subject: email,
-    expiresIn: 5, // 15 minutes
+    expiresIn: 2880, // 15 minutes
   });
 
-  const refreshToken = createRefreshToken(email)
+  const refreshToken = await createRefreshToken(email);
 
   return {
     token,

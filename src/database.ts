@@ -1,41 +1,60 @@
-import { RefreshTokensStore, UsersStore } from "./types"
+import { refreshToken, UsersStore } from "./types"
+import { Prisma, PrismaClient } from '@prisma/client';
+
 import { v4 as uuid } from 'uuid'
 
-export const users: UsersStore = new Map()
 
-export const tokens: RefreshTokensStore = new Map()
 
-export function seedUserStore() {
-  users.set('diego@rocketseat.team', {
-    password: '123456',
-    permissions: ['users.list', 'users.create', 'metrics.list'],
-    roles: ['administrator']
-  })
+const prisma = new PrismaClient();
 
-  users.set('estagiario@rocketseat.team', {
-    password: '123456',
-    permissions: ['users.list', 'metrics.list'],
-    roles: ['editor']
-  })
+
+
+export async function createRefreshToken(email: string) {
+  try {
+    const refreshToken = uuid();
+
+    await prisma.refreshToken.create({
+      data: {
+        email,
+        token: refreshToken,
+      },
+    });
+
+    return refreshToken;
+  } catch (error: any) {
+    throw new Error('Failed to create refresh token: ' + error.message);
+  }
 }
 
-export function createRefreshToken(email: string) {
-  const currentUserTokens = tokens.get(email) ?? []
-  const refreshToken = uuid()
 
-  tokens.set(email, [...currentUserTokens, refreshToken])
-
-  return refreshToken;
+export async function checkRefreshTokenIsValid(email: string, refreshToken: string) {
+  try {
+    const storedRefreshTokens = await prisma.refreshToken.findFirst({
+      where: {
+        email,
+        token: refreshToken,
+      },
+    });
+    return storedRefreshTokens !== null;
+  } catch (error: any) {
+    throw new Error('Failed to check refresh token validity: ' + error.message);
+  }
 }
 
-export function checkRefreshTokenIsValid(email: string, refreshToken: string) {
-  const storedRefreshTokens = tokens.get(email) ?? []
 
-  return storedRefreshTokens.some(token => token === refreshToken)
+
+export async function invalidateRefreshToken(email: string, refreshToken: string) {
+  try {
+    await prisma.refreshToken.deleteMany({
+      where: {
+        email,
+        token: refreshToken,
+      },
+    });
+  } catch (error: any) {
+    throw new Error('Failed to invalidate refresh token: ' + error.message);
+  }
 }
 
-export function invalidateRefreshToken(email: string, refreshToken: string) {
-  const storedRefreshTokens = tokens.get(email) ?? []
 
-  tokens.set(email, storedRefreshTokens.filter(token => token !== refreshToken));
-}
+
