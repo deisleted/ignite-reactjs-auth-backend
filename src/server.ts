@@ -406,7 +406,7 @@ app.patch('/users/reset-password/:id', checkAuthMiddleware, async (request, resp
         id,
       },
       data: {
-        password: '12345',
+        password: '123456',
       },
     });
 
