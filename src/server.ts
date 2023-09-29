@@ -335,6 +335,51 @@ app.patch('/users/:id', checkAuthMiddleware, async (request, response) => {
   }
 });
 
+// Editar dados do Usuário ADM
+app.patch('/editUser/:id', async (request, response) => {
+  const userId = request.params.id;
+  const { name, email, roles } = request.body;
+
+  try {
+    // Find the user by ID
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+    if (!user) {
+      return response.status(404).json({
+        error: true,
+        message: 'User not found.',
+      });
+    }
+
+    // Update the user's data
+    await prisma.user.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        content: name,
+        email,
+        roles: { set: roles },
+      },
+    });
+
+    return response.status(200).json({
+      success: true,
+      message: 'User updated successfully.',
+    });
+  } catch (error) {
+    return response.status(500).json({
+      error: true,
+      message: 'An error occurred while processing your request.',
+    });
+  }
+});
+
+
 
 // Resetar Senha
 app.patch('/users/reset-password/:id', checkAuthMiddleware, async (request, response) => {
@@ -408,6 +453,8 @@ app.post('/createUser', checkAuthMiddleware, async (request, response) => {
     });
   }
 });
+
+
 
 
 

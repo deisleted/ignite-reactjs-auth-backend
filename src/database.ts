@@ -1,4 +1,3 @@
-import { refreshToken, UsersStore } from "./types"
 import { Prisma, PrismaClient } from '@prisma/client';
 
 import { v4 as uuid } from 'uuid'
