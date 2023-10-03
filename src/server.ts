@@ -11,6 +11,7 @@ import { CreateSessionDTO, CreateUserData, DecodedToken } from './types';
 
 const app = express();
 const prisma = new PrismaClient();
+const bcrypt = require('bcrypt');
 
 app.use(express.json());
 app.use(cors())
@@ -78,7 +79,6 @@ function addUserInformationToRequest(request: Request, response: Response, next:
 }
 
 
-// Login
 app.post('/sessions', async (request, response) => {
   const { email, password } = request.body as CreateSessionDTO;
 
@@ -89,13 +89,21 @@ app.post('/sessions', async (request, response) => {
       },
     });
 
-    if (!user || password !== user.password) {
-      return response
-        .status(401)
-        .json({
-          error: true,
-          message: 'E-mail or password incorrect.'
-        });
+    if (!user) {
+      return response.status(401).json({
+        error: true,
+        message: 'E-mail or password incorrect.'
+      });
+    }
+
+    // Comparar a senha fornecida com o hash armazenado no banco de dados
+    const passwordMatch = await bcrypt.compare(password, user.password);
+
+    if (!passwordMatch) {
+      return response.status(401).json({
+        error: true,
+        message: 'E-mail or password incorrect.'
+      });
     }
 
     const { token, refreshToken } = await generateJwtAndRefreshToken(email, {
@@ -113,12 +121,10 @@ app.post('/sessions', async (request, response) => {
       roles: user.roles,
     });
   } catch (error) {
-    return response
-      .status(500)
-      .json({
-        error: true,
-        message: 'An error occurred while processing your request.'
-      });
+    return response.status(500).json({
+      error: true,
+      message: 'An error occurred while processing your request.'
+    });
   }
 });
 
@@ -226,8 +232,7 @@ app.put('/me/editar', checkAuthMiddleware, async (request, response) => {
   const { email, newPassword, newName } = request.body;
 
   try {
-    // Busque o usuário pelo e-mail
-    const user = await prisma.user.findUnique({
+    const user = await prisma.user.findFirst({
       where: {
         email,
       },
@@ -237,28 +242,23 @@ app.put('/me/editar', checkAuthMiddleware, async (request, response) => {
       return response.status(404).json({ error: 'Usuário não encontrado.' });
     }
 
-    // Atualize a senha e/ou o nome do usuário, se fornecidos
+    // Se houver uma nova senha, criar o hash
+    let hashedPassword = null;
     if (newPassword) {
-      await prisma.user.update({
-        where: {
-          email,
-        },
-        data: {
-          password: newPassword,
-        },
-      });
+      // Hash da nova senha
+      hashedPassword = await bcrypt.hash(newPassword, 10);
     }
 
-    if (newName) {
-      await prisma.user.update({
-        where: {
-          email,
-        },
-        data: {
-          content: newName,
-        },
-      });
-    }
+    // Atualizar os dados do usuário no banco de dados
+    await prisma.user.update({
+      where: {
+        email,
+      },
+      data: {
+        password: hashedPassword, // Atualizar o hash da senha se houver nova senha
+        content: newName || user.content, // Atualizar o nome se houver um novo nome
+      },
+    });
 
     response.status(200).json({ success: true, message: 'Dados atualizados com sucesso.' });
   } catch (error) {
@@ -336,7 +336,7 @@ app.patch('/users/:id', checkAuthMiddleware, async (request, response) => {
 });
 
 // Editar dados do Usuário ADM
-app.patch('/editUser/:id', async (request, response) => {
+app.patch('/editUser/:id', checkAuthMiddleware, async (request, response) => {
   const userId = request.params.id;
   const { name, email, roles } = request.body;
 
@@ -384,6 +384,7 @@ app.patch('/editUser/:id', async (request, response) => {
 // Resetar Senha
 app.patch('/users/reset-password/:id', checkAuthMiddleware, async (request, response) => {
   const { id } = request.params;
+  const { newPassword } = request.body;
 
   try {
     // Verifique se o usuário com o ID fornecido existe
@@ -400,22 +401,26 @@ app.patch('/users/reset-password/:id', checkAuthMiddleware, async (request, resp
       });
     }
 
-    // Atualize a senha do usuário para "12345"
+    // Hash da nova senha
+    const hashedPassword = await bcrypt.hash('123456', 10);
+
+    // Atualize a senha do usuário
     const updatedUser = await prisma.user.update({
       where: {
         id,
       },
       data: {
-        password: '123456',
+        password: hashedPassword,
       },
     });
 
     return response.status(200).json({
       success: true,
-      message: 'Senha do usuário atualizada com sucesso para "12345".',
+      message: 'Senha do usuário atualizada com sucesso.',
       updatedUser,
     });
   } catch (error) {
+    console.error('Erro ao resetar a senha do usuário:', error);
     return response.status(500).json({
       error: true,
       message: 'Ocorreu um erro ao processar a solicitação.',
@@ -423,38 +428,57 @@ app.patch('/users/reset-password/:id', checkAuthMiddleware, async (request, resp
   }
 });
 
-
 // Criar usuário
 app.post('/createUser', checkAuthMiddleware, async (request, response) => {
   const { email, name, password, roles } = request.body as CreateUserData;
 
   try {
-    const user = await prisma.user.create({
-      data: {
-        ativo: true,
-        email,
-        content: name,
-        password,
-        roles,
+    // Transforma o e-mail em minúsculas
+    const transformedEmail = email.toLowerCase();
+
+    // Verifica se o e-mail já existe
+    const existingUser = await prisma.user.findUnique({
+      where: {
+        email: transformedEmail,
       },
     });
 
-    // Return a success message
+    if (existingUser) {
+      return response.status(400).json({
+        error: true,
+        message: 'E-mail já está em uso',
+      });
+    }
+
+
+    const transformedContent = name.replace(/\b\w/g, match => match.toUpperCase());
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const transformedRoles = roles.map(role => role.toUpperCase());
+
+    const user = await prisma.user.create({
+      data: {
+        ativo: true,
+        email: transformedEmail,
+        content: transformedContent,
+        password: hashedPassword,
+        roles: transformedRoles,
+      },
+    });
+
+    // Retorna uma mensagem de sucesso
     return response.json({
       success: true,
-      message: 'User created successfully!',
+      message: 'Usuário criado com sucesso!',
       user,
     });
   } catch (error) {
-    console.error('Error creating user:', error);
+    console.error('Erro ao criar usuário:', error);
     return response.status(500).json({
       error: true,
-      message: 'An error occurred while processing your request.',
+      message: 'Ocorreu um erro ao processar sua solicitação.',
     });
   }
 });
-
-
 
 
 
